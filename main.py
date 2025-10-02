@@ -87,8 +87,8 @@ def login():
             user = user_data[0]
             if bcrypt.checkpw(password.encode("utf-8"), user["mot_de_passe"].encode("utf-8")):
                 st.session_state.user = user
-                st.success("Connecté avec succès.")
-                st.experimental_rerun()
+                st.success("Connecté avec succès ✅")
+                st.rerun()   # ou supprime cette ligne si ça marche sans
             else:
                 st.error("Mot de passe incorrect.")
         else:
@@ -96,8 +96,8 @@ def login():
 
 def logout():
     st.session_state.user = None
-    st.success("Déconnecté")
-    st.experimental_rerun()
+    st.success("Déconnecté ✅")
+    st.rerun()   # idem, utile si tu veux forcer un refresh
 
 # Interface principale
 if not st.session_state.user:
