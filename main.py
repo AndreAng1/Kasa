@@ -4,14 +4,13 @@ from fpdf import FPDF
 from io import BytesIO
 from datetime import datetime
 import pandas as pd
-import bcrypt
 
 # --- Configuration Supabase ---
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- Classe PDF pour quittances ---
+# --- Classe PDF ---
 class PDF(FPDF):
     def header(self):
         self.set_font("Arial", "B", 12)
@@ -30,15 +29,15 @@ class PDF(FPDF):
         self.chapter_title(title)
         self.chapter_body(body)
 
-
 def generate_pdf(content):
     pdf = PDF()
     pdf.add_contract("Quittance de Loyer", content)
     return BytesIO(pdf.output(dest="S").encode("latin1"))
 
-
 def upload_pdf_to_supabase(file_bytes, filename, user_id):
-    path = f"{user_id}/{filename.replace(' ', '_')}"
+    # Nettoyage du chemin
+    safe_filename = filename.replace(" ", "_").replace("é", "e")
+    path = f"{user_id}/{safe_filename}"
     response = supabase.storage.from_("kasa_storage").upload(
         path, file_bytes,
         {"content-type": "application/pdf", "x-upsert": "true"}
@@ -47,20 +46,20 @@ def upload_pdf_to_supabase(file_bytes, filename, user_id):
         raise Exception(response["error"]["message"])
     return supabase.storage.from_("kasa_storage").get_public_url(path)
 
-# --- Initialisation de session ---
+# --- Initialisation session ---
 if "user" not in st.session_state:
     st.session_state.user = None
 if "page" not in st.session_state:
     st.session_state.page = "Accueil"
 
-# --- Interface d'accueil ---
+# --- Page d'accueil ---
 def accueil():
     st.title("🏠 Bienvenue sur KASA")
     st.markdown("""
     **KASA** est votre solution moderne de **gestion locative automatisée** :
-    - 📄 Génération automatique de contrats  
+    - 📄 Création automatique de contrats  
     - 💰 Suivi et quittances de loyers  
-    - ☁️ Stockage sécurisé dans le cloud  
+    - ☁️ Sauvegarde sécurisée dans le cloud  
     - 🔐 Authentification Supabase sécurisée  
     ---
     """)
@@ -74,8 +73,7 @@ def accueil():
             st.session_state.page = "Inscription"
             st.rerun()
 
-# --- Authentification : Inscription ---
-
+# --- Inscription ---
 def inscription():
     st.header("Créer un compte")
     with st.form("form_inscription"):
@@ -91,18 +89,20 @@ def inscription():
             return
 
         try:
-            # Création dans Auth
-            response = supabase.auth.sign_up({
-                "email": email,
-                "password": password
-            })
-
+            # ✅ Création utilisateur dans Supabase Auth
+            response = supabase.auth.sign_up({"email": email, "password": password})
             user = response.user
+
             if not user:
-                st.error("⚠️ Échec de la création du compte (vérifiez l'email).")
+                st.error("⚠️ Échec de la création du compte. Vérifiez votre email.")
                 return
 
-            # ✅ Mettre à jour le profil après création automatique
+            # ⚙️ Petite attente avant mise à jour du profil
+            # (utile si trigger handle_new_user vient d'agir)
+            import time
+            time.sleep(1)
+
+            # ✅ Mise à jour du profil (table utilisateurs)
             supabase.table("utilisateurs").update({
                 "nom": nom.strip(),
                 "prenom": prenom.strip()
@@ -119,7 +119,7 @@ def inscription():
         st.session_state.page = "Accueil"
         st.rerun()
 
-# --- Authentification : Connexion ---
+# --- Connexion ---
 def connexion():
     st.header("Connexion à KASA")
     email = st.text_input("Email")
@@ -127,31 +127,27 @@ def connexion():
 
     if st.button("Se connecter"):
         try:
-            res = supabase.auth.sign_in_with_password({
-                "email": email,
-                "password": password
-            })
+            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
             user = res.user
+
             if user:
-                # Récupération du profil
                 data = supabase.table("utilisateurs").select("*").eq("id", user.id).execute()
-                if data.data:
-                    profile = data.data[0]
-                    st.session_state.user = {
-                        "id": user.id,
-                        "email": email,
-                        "nom": profile.get("nom", ""),
-                        "prenom": profile.get("prenom", "")
-                    }
-                    st.success("Connexion réussie ✅")
-                    st.session_state.page = "KASA"
-                    st.rerun()
-                else:
-                    st.error("Profil introuvable, contactez l’administrateur.")
+                profile = data.data[0] if data.data else {"nom": "", "prenom": ""}
+
+                st.session_state.user = {
+                    "id": user.id,
+                    "email": email,
+                    "nom": profile.get("nom", ""),
+                    "prenom": profile.get("prenom", "")
+                }
+
+                st.success("Connexion réussie ✅")
+                st.session_state.page = "KASA"
+                st.rerun()
             else:
-                st.error("Identifiants incorrects.")
+                st.error("❌ Identifiants incorrects.")
         except Exception as e:
-            st.error(f"Erreur : {e}")
+            st.error(f"❌ Erreur : {e}")
 
     if st.button("⬅️ Retour à l'accueil"):
         st.session_state.page = "Accueil"
@@ -165,7 +161,7 @@ def logout():
     st.success("Déconnecté ✅")
     st.rerun()
 
-# --- Interface principale KASA ---
+# --- Interface principale ---
 def interface_kasa():
     user = st.session_state.user
     st.sidebar.success(f"Connecté : {user['email']}")
@@ -178,7 +174,7 @@ def interface_kasa():
         st.header("Ajouter un bien")
         nom = st.text_input("Nom du bien")
         adresse = st.text_input("Adresse")
-        superficie = st.number_input("Superficie", min_value=10.0)
+        superficie = st.number_input("Superficie (m²)", min_value=10.0)
         chambres = st.number_input("Chambres", 0)
         salon = st.number_input("Salons", 0)
         cuisine = st.number_input("Cuisines", 0)
@@ -204,7 +200,8 @@ def interface_kasa():
             bien_dict = {b['nom']: b for b in biens}
             bien_nom = st.selectbox("Choisir un bien", list(bien_dict.keys()))
             locataire = st.text_input("Nom du locataire")
-            mois = st.selectbox("Mois", ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"])
+            mois = st.selectbox("Mois", ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+                                         "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"])
             annee = st.number_input("Année", min_value=2000, value=datetime.today().year)
             montant = st.number_input("Montant payé (FCFA)", min_value=0)
             statut = st.selectbox("Statut du paiement", ["Payé", "Non payé"])
