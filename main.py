@@ -104,7 +104,7 @@ def inscription():
                 return
 
             # Étape 2 : Attendre que l’utilisateur apparaisse dans auth.users
-            time.sleep(2)  # pause 2 secondes pour être sûr que l'ID soit disponible
+            time.sleep(4)  # pause 2 secondes pour être sûr que l'ID soit disponible
 
             # Étape 3 : Insérer dans la table 'utilisateurs'
             insert_response = supabase.table("utilisateurs").insert({
