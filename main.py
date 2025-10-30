@@ -77,38 +77,43 @@ def accueil():
 # --- Authentification : Inscription ---
 def inscription():
     st.header("Créer un compte")
-    email = st.text_input("Email")
-    password = st.text_input("Mot de passe", type="password")
-    nom = st.text_input("Nom")
-    prenom = st.text_input("Prénom")
+    with st.form("form_inscription"):
+        email = st.text_input("Email")
+        password = st.text_input("Mot de passe", type="password")
+        nom = st.text_input("Nom")
+        prenom = st.text_input("Prénom")
+        submitted = st.form_submit_button("Créer mon compte")
 
-    if st.button("Créer mon compte"):
-        if not all([email, password, nom, prenom]):
-            st.error("Veuillez remplir tous les champs.")
+    if submitted:
+        if not email.strip() or not password.strip() or not nom.strip() or not prenom.strip():
+            st.error("⚠️ Veuillez remplir tous les champs.")
             return
 
         try:
-            # Crée un utilisateur dans Supabase Auth
+            # Création du compte utilisateur dans auth.users
             auth_response = supabase.auth.sign_up({
                 "email": email,
                 "password": password
             })
-            user_id = auth_response.user.id
+            user = auth_response.user
+            if user is None:
+                st.error("Erreur : impossible de créer le compte. Vérifiez l'email.")
+                return
 
-            # Ajoute le profil dans la table utilisateurs
+            # Insertion du profil utilisateur
             supabase.table("utilisateurs").insert({
-                "id": user_id,
-                "nom": nom,
-                "prenom": prenom
+                "id": user.id,
+                "nom": nom.strip(),
+                "prenom": prenom.strip()
             }).execute()
 
-            st.success("Compte créé avec succès 🎉")
-            st.info("Veuillez vérifier votre email avant de vous connecter.")
+            st.success("✅ Compte créé avec succès !")
+            st.info("Vérifiez votre email avant de vous connecter.")
             st.session_state.page = "Connexion"
             st.rerun()
 
         except Exception as e:
-            st.error(f"Erreur lors de la création du compte : {e}")
+            st.error(f"❌ Erreur lors de la création du compte : {e}")
 
     if st.button("⬅️ Retour à l'accueil"):
         st.session_state.page = "Accueil"
