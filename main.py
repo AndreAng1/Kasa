@@ -75,6 +75,8 @@ def accueil():
             st.rerun()
 
 # --- Authentification : Inscription ---
+import time
+
 def inscription():
     st.header("Créer un compte")
     with st.form("form_inscription"):
@@ -90,27 +92,34 @@ def inscription():
             return
 
         try:
-            # Création du compte utilisateur dans auth.users
+            # Étape 1 : création du compte dans Supabase Auth
             auth_response = supabase.auth.sign_up({
                 "email": email,
                 "password": password
             })
             user = auth_response.user
-            if user is None:
-                st.error("Erreur : impossible de créer le compte. Vérifiez l'email.")
+
+            if not user:
+                st.error("Erreur : l'utilisateur n'a pas été créé. Vérifiez l'email.")
                 return
 
-            # Insertion du profil utilisateur
-            supabase.table("utilisateurs").insert({
-                "id": user.id,
+            # Étape 2 : Attendre que l’utilisateur apparaisse dans auth.users
+            time.sleep(2)  # pause 2 secondes pour être sûr que l'ID soit disponible
+
+            # Étape 3 : Insérer dans la table 'utilisateurs'
+            insert_response = supabase.table("utilisateurs").insert({
+                "id": str(user.id),
                 "nom": nom.strip(),
                 "prenom": prenom.strip()
             }).execute()
 
-            st.success("✅ Compte créé avec succès !")
-            st.info("Vérifiez votre email avant de vous connecter.")
-            st.session_state.page = "Connexion"
-            st.rerun()
+            if insert_response.data:
+                st.success("✅ Compte créé avec succès !")
+                st.info("Vérifiez votre email avant de vous connecter.")
+                st.session_state.page = "Connexion"
+                st.rerun()
+            else:
+                st.warning("Compte créé, mais profil non ajouté (tentative échouée).")
 
         except Exception as e:
             st.error(f"❌ Erreur lors de la création du compte : {e}")
