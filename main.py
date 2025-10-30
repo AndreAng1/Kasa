@@ -7,13 +7,17 @@ from io import BytesIO
 from datetime import datetime
 import pandas as pd
 
-# Connexion Supabase
+# =========================
+# ⚙️ Connexion Supabase
+# =========================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Classe PDF
+# =========================
+# 📄 Classe PDF
+# =========================
 class PDF(FPDF):
     def header(self):
         self.set_font("Arial", "B", 12)
@@ -32,25 +36,33 @@ class PDF(FPDF):
         self.chapter_title(title)
         self.chapter_body(body)
 
+
 def generate_pdf(content):
     pdf = PDF()
     pdf.add_contract("Quittance de Loyer", content)
     return BytesIO(pdf.output(dest="S").encode("latin1"))
 
+
 def upload_pdf_to_supabase(file_bytes, filename, user_id):
-    path = f"{user_id}/{filename}"
-    response = supabase.storage.from_("kasa_storage").upload(path, file_bytes, {
-        "content-type": "application/pdf",
-        "x-upsert": "true"
-    })
+    safe_filename = filename.replace(" ", "_").replace("é", "e")
+    path = f"{user_id}/{safe_filename}"
+    response = supabase.storage.from_("kasa_storage").upload(
+        path,
+        file_bytes,
+        {"content-type": "application/pdf", "x-upsert": "true"}
+    )
     if response.get("error"):
         raise Exception(response["error"]["message"])
-    public_url = supabase.storage.from_("kasa_storage").get_public_url(path)
-    return public_url
+    return supabase.storage.from_("kasa_storage").get_public_url(path)
 
-# Authentification
+# =========================
+# 🔐 Authentification
+# =========================
 if "user" not in st.session_state:
     st.session_state.user = None
+if "page" not in st.session_state:
+    st.session_state.page = "Accueil"
+
 
 def signup():
     st.subheader("Créer un compte")
@@ -76,6 +88,7 @@ def signup():
         except Exception as e:
             st.error(f"Erreur : {e}")
 
+
 def login():
     st.subheader("Connexion")
     email = st.text_input("Email", key="login_email")
@@ -88,33 +101,67 @@ def login():
             if bcrypt.checkpw(password.encode("utf-8"), user["mot_de_passe"].encode("utf-8")):
                 st.session_state.user = user
                 st.success("Connecté avec succès ✅")
-                st.rerun()   # ou supprime cette ligne si ça marche sans
+                st.session_state.page = "Application"
+                st.rerun()
             else:
                 st.error("Mot de passe incorrect.")
         else:
             st.error("Utilisateur introuvable.")
 
+
 def logout():
     st.session_state.user = None
+    st.session_state.page = "Accueil"
     st.success("Déconnecté ✅")
-    st.rerun()   # idem, utile si tu veux forcer un refresh
+    st.rerun()
 
-# Interface principale
-if not st.session_state.user:
+
+# =========================
+# 🏠 PAGE D'ACCUEIL
+# =========================
+if st.session_state.page == "Accueil":
+    st.title("🏡 Bienvenue sur KASA")
+    st.markdown("""
+    **KASA** est votre assistant intelligent pour la gestion locative.  
+    Générez automatiquement vos contrats, suivez vos paiements et recevez vos quittances en un clic.
+
+    ---
+    ### 💡 Fonctionnalités principales :
+    - Ajoutez et gérez vos **biens immobiliers**  
+    - Suivez vos **paiements de loyers** avec génération automatique de quittances PDF  
+    - Consultez vos **statistiques locatives** sur un tableau de bord clair et interactif  
+
+    ---
+    """)
+    if st.button("🚀 Accéder à l'application"):
+        st.session_state.page = "Authentification"
+        st.rerun()
+
+# =========================
+# 🔑 PAGE D’AUTHENTIFICATION
+# =========================
+elif st.session_state.page == "Authentification" and not st.session_state.user:
+    st.image("https://cdn-icons-png.flaticon.com/512/2950/2950657.png", width=100)
+    st.title("🔐 Espace utilisateur KASA")
     tabs = st.tabs(["Connexion", "Créer un compte"])
     with tabs[0]:
         login()
     with tabs[1]:
         signup()
-else:
+
+# =========================
+# 💼 APPLICATION KASA
+# =========================
+elif st.session_state.user:
     user = st.session_state.user
     st.sidebar.success(f"Connecté : {user['email']}")
     if st.sidebar.button("Déconnexion"):
         logout()
 
-    menu = st.sidebar.selectbox("Menu", ["Ajouter un bien", "Suivi des loyers", "Tableau de bord"])
+    menu = st.sidebar.selectbox("Menu", ["🏘️ Ajouter un bien", "💳 Suivi des loyers", "📊 Tableau de bord"])
 
-    if menu == "Ajouter un bien":
+    # Ajouter un bien
+    if menu == "🏘️ Ajouter un bien":
         st.header("Ajouter un bien")
         nom = st.text_input("Nom du bien")
         adresse = st.text_input("Adresse")
@@ -135,7 +182,8 @@ else:
             }).execute()
             st.success("Bien enregistré.")
 
-    elif menu == "Suivi des loyers":
+    # Suivi des loyers
+    elif menu == "💳 Suivi des loyers":
         st.header("Suivi des loyers")
         biens = supabase.table("biens").select("*").eq("utilisateur_id", user["id"]).execute().data
         if not biens:
@@ -144,7 +192,10 @@ else:
             bien_dict = {b['nom']: b['id'] for b in biens}
             bien_nom = st.selectbox("Bien", list(bien_dict.keys()))
             locataire = st.text_input("Locataire")
-            mois = st.selectbox("Mois", ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"])
+            mois = st.selectbox("Mois", [
+                "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+                "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+            ])
             annee = st.number_input("Année", min_value=2000, value=datetime.today().year)
             montant = st.number_input("Montant", min_value=0)
             statut = st.selectbox("Statut", ["Payé", "Non payé"])
@@ -164,7 +215,7 @@ la somme de {montant} FCFA au titre du loyer du mois de {mois} {annee}.
 Fait à {biens[0]['adresse']}, le {datetime.today().strftime('%d/%m/%Y')}
 
 Signature du bailleur : {user['prenom']} {user['nom']}
-                """
+"""
                 pdf = generate_pdf(quittance_txt)
                 filename = f"quittance_{mois}_{annee}_{locataire}.pdf"
                 url = upload_pdf_to_supabase(pdf.getvalue(), filename, user["id"])
@@ -181,7 +232,8 @@ Signature du bailleur : {user['prenom']} {user['nom']}
                 st.success("Paiement enregistré.")
                 st.download_button("📥 Télécharger quittance", pdf, file_name=filename)
 
-    elif menu == "Tableau de bord":
+    # Tableau de bord
+    elif menu == "📊 Tableau de bord":
         st.header("Tableau de bord")
         paiements = supabase.table("paiements").select("*").execute().data
         if paiements:
