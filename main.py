@@ -75,7 +75,6 @@ def accueil():
             st.rerun()
 
 # --- Authentification : Inscription ---
-import time
 
 def inscription():
     st.header("Créer un compte")
@@ -87,39 +86,31 @@ def inscription():
         submitted = st.form_submit_button("Créer mon compte")
 
     if submitted:
-        if not email.strip() or not password.strip() or not nom.strip() or not prenom.strip():
+        if not all([email.strip(), password.strip(), nom.strip(), prenom.strip()]):
             st.error("⚠️ Veuillez remplir tous les champs.")
             return
 
         try:
-            # Étape 1 : création du compte dans Supabase Auth
-            auth_response = supabase.auth.sign_up({
+            # Création dans Auth
+            response = supabase.auth.sign_up({
                 "email": email,
                 "password": password
             })
-            user = auth_response.user
 
+            user = response.user
             if not user:
-                st.error("Erreur : l'utilisateur n'a pas été créé. Vérifiez l'email.")
+                st.error("⚠️ Échec de la création du compte (vérifiez l'email).")
                 return
 
-            # Étape 2 : Attendre que l’utilisateur apparaisse dans auth.users
-            time.sleep(2)  # pause 2 secondes pour être sûr que l'ID soit disponible
-
-            # Étape 3 : Insérer dans la table 'utilisateurs'
-            insert_response = supabase.table("utilisateurs").insert({
-                "id": str(user.id),
+            # ✅ Mettre à jour le profil après création automatique
+            supabase.table("utilisateurs").update({
                 "nom": nom.strip(),
                 "prenom": prenom.strip()
-            }).execute()
+            }).eq("id", str(user.id)).execute()
 
-            if insert_response.data:
-                st.success("✅ Compte créé avec succès !")
-                st.info("Vérifiez votre email avant de vous connecter.")
-                st.session_state.page = "Connexion"
-                st.rerun()
-            else:
-                st.warning("Compte créé, mais profil non ajouté (tentative échouée).")
+            st.success("✅ Compte créé avec succès ! Vérifiez votre email avant connexion.")
+            st.session_state.page = "Connexion"
+            st.rerun()
 
         except Exception as e:
             st.error(f"❌ Erreur lors de la création du compte : {e}")
